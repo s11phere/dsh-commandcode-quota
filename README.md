@@ -34,13 +34,20 @@ Token 输出                 329.7k
 ## 安装
 
 ```bash
-# 从 GitHub 安装
-dsh plugin --profile web add git@github.com:s11phere/dsh-commandcode-quota.git
+# 从 GitHub 安装（公开仓库，HTTPS 无需凭据）
+dsh plugin --profile web add github:s11phere/dsh-commandcode-quota
 
-# 或先 clone 到本地再按路径安装
+# 完整 URL 也行
+dsh plugin --profile web add https://github.com/s11phere/dsh-commandcode-quota.git
+
+# 或者先 clone 到本地，再按路径安装
 git clone git@github.com:s11phere/dsh-commandcode-quota.git
 dsh plugin --profile web add ./dsh-commandcode-quota
 ```
+
+> ⚠️ 别用 scp 风格的 `git@github.com:s11phere/dsh-commandcode-quota.git`。`dsh plugin add`
+> 把参数原样交给 pnpm，而 pnpm 会把 `git@github.com:...` 误解析成「包名 `git` + 版本」，
+> 结果是装出一个叫 `git` 的空依赖，插件不会生效。实测只有上面三种写法可用。
 
 然后**重启 `dsh web`**。profile 的 bundle 列表在启动时组装，新增包必须重启才会被加载。
 之后改客户端代码只需要刷新页面。
