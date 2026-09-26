@@ -1,0 +1,52 @@
+{
+  "name": "dsh-commandcode-quota",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH plugin: Command Code (CC) plan quota in the top-right corner — 5-hour / weekly / monthly windows with reset countdowns, plus billing-period token totals and plan status.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s11phere/dsh-commandcode-quota.git"
+  },
+  "homepage": "https://github.com/s11phere/dsh-commandcode-quota#readme",
+  "bugs": {
+    "url": "https://github.com/s11phere/dsh-commandcode-quota/issues"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "commandcode",
+    "command-code",
+    "quota",
+    "usage"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  }
+}
