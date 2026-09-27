@@ -175,9 +175,18 @@ const PROFILE_PATCH = [
 
 const CREDENTIALS = ['version: 1', 'refs:', '  COMMANDCODE_API_KEY: user_from_file', 'records: {}'].join('\n')
 
-/** 造一个只认识给定文件的 readFile。 */
+/**
+ * 造一个只认识给定文件的 readFile。
+ *
+ * 两侧都把 `\` 折成 `/` 再比对：`lib/quota.js` 用 `node:path.join` 拼路径，同一份夹具
+ * 在 Windows 上拼出的是 `\dsh\profiles\web\cordis.patch.yml`，直接拿下面的 POSIX 字面量
+ * 当键会全部落空——那三个凭据发现用例就是这样在 Windows 上假失败过。生产路径由
+ * `join` 一致生成再用同一字符串读盘，所以这个差异只影响夹具。
+ */
 function fakeFs(files) {
-  return (path) => files[path]
+  const normalize = (path) => String(path).replaceAll('\\', '/')
+  const normalized = new Map(Object.entries(files).map(([key, value]) => [normalize(key), value]))
+  return (path) => normalized.get(normalize(path))
 }
 
 const FS_BASE = {
