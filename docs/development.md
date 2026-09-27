@@ -25,6 +25,11 @@ profile 的 bundle 列表在启动时组装，所以新增包之后要**重启 `
 追加进该 profile 的 `dsh.profile.bundles`，不需要手写同 id 的条目（重复会报
 `duplicate loader entry id`）。卸载：把 `add` 换成 `remove`，同样要重启。
 
+> **Windows：** 上面第 3 种（本地路径）在 Windows 上有个跨盘坑——源码与 `$DSH_HOME` 不在
+> 同一块盘时，pnpm 建的 junction 目标是错的，`dsh plugin add` 会整体失败（exit 1），
+> 并连带让同 profile 里其它本地链接插件在启动时被静默跳过。自检、修复与建议见
+> [Windows 注意事项](windows.md#本地路径安装跨盘会建出坏链接)。
+
 ## 跑测试
 
 ```bash
@@ -96,6 +101,9 @@ Token 输入 27.73M · Token 输出 392.9k · 请求数 379 次 · 周期花费 
 月度上限的修正另在真实 API 上核对：`computedCap` 69.914 → 展示值精确 `70`。发布后又用
 GitHub 上的仓库真装了一次（隔离 DSH_HOME），确认 `files` 字段过滤正确、路由可用。
 
+Windows 上另做过一轮同样的端到端验收，见
+[Windows 注意事项](windows.md#windows-验收记录)。
+
 ### 测试覆盖不到的边界
 
 按插槽契约，按钮只在**已开始会话**的头部工具行里出现。上面那次浏览器验收没能覆盖到这个
@@ -103,3 +111,8 @@ GitHub 上的仓库真装了一次（隔离 DSH_HOME），确认 `files` 字段�
 contenteditable，CDP 的 `Input.insertText` 打不进去，最终没打通。这条路径由
 `tests/wiring.test.mjs` 保证注册契约（插槽名、`order`、`inject` 面），样式则由逐条比对
 原生 CSS 的实际取值保证，但没有端到端截图。
+
+Windows 那一轮把这条路径补上了：不再试图打字，而是先用 `dsh headless` 在**同一个隔离
+`DSH_HOME`** 里跑一句极短的 prompt 造出一个真会话，再在侧边栏展开工作区、点开它，
+于是按钮与卡片都拿到了端到端截图（README 里那张就是）。顺带确认了「空白会话不渲染工具行」
+在 Windows 上同样成立——此时头部是 `headerBlank` 变体，按钮数为 0。
