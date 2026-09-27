@@ -68,6 +68,7 @@ dsh plugin --profile web add github:s11phere/dsh-commandcode-quota
 ## 已知限制
 
 - 按钮只在会话已开始后出现（见上）。
+- token 进出与请求数来自 2–3 分钟一批的聚合，可能略滞后；额度窗口和花费是实时的。
 - 账户级 API 不提供**缓存命中 / 未命中**的拆分，只有毛输入 token 总量。
 - 数据来自官方 CLI 自用的内部接口（路径带 `alpha`），字段名有变更风险。
 

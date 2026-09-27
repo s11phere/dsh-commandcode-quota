@@ -1,6 +1,6 @@
 {
   "name": "dsh-commandcode-quota",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "DSH plugin: Command Code (CC) plan quota in the top-right corner — 5-hour / weekly / monthly windows with reset countdowns, plus billing-period token totals and plan status.",
   "type": "module",
@@ -26,8 +26,7 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
-    "CHANGELOG.md",
-    "docs"
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "node --test"

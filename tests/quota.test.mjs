@@ -263,8 +263,19 @@ test('planInfoOf：只做完整 id 匹配，大小写与下划线归一', () => 
   assert.equal(planInfoOf(undefined), undefined)
 })
 
-test('normalizeReport：窗口、套餐、汇总、月度推算都对上', () => {
-  const report = normalizeReport({ whoami: WHOAMI, usage: USAGE, credits: CREDITS, subscription: SUBSCRIPTION })
+/** 计费周期开始约 21 小时后：周期中段，不在翻转保护窗口内。 */
+const MID_PERIOD = Date.parse('2026-09-27T12:00:00.000Z')
+/** 周期开始 1 分钟后：落在翻转保护窗口内。 */
+const JUST_ROLLED = Date.parse('2026-09-26T14:53:38.000Z') + 60_000
+
+test('normalizeReport：常态下上限取名义值，月度已用与窗口同一个实时账本', () => {
+  const report = normalizeReport({
+    whoami: WHOAMI,
+    usage: USAGE,
+    credits: CREDITS,
+    subscription: SUBSCRIPTION,
+    now: MID_PERIOD,
+  })
 
   assert.equal(report.plan.planId, 'individual-goat')
   assert.equal(report.plan.name, 'GOAT')
@@ -274,44 +285,85 @@ test('normalizeReport：窗口、套餐、汇总、月度推算都对上', () =>
   assert.equal(report.fiveHour.resetAt, 1790453209051)
   assert.equal(report.weekly.cap, 35)
 
-  // 月度上限 = 已用 + 剩余；与名义额度 $70 吻合，所以不算可疑。
-  // 没有额外额度 → 上限直接取官方名义值 $70，而不是两次请求相加得到的 69.988。
-  assert.equal(report.monthly.capSuspect, false)
+  // 上限：实时值（69.988）落在抖动带内 → 显示官方名义值 70，数字稳定不跳。
+  assert.equal(report.monthly.capSource, 'nominal')
   assert.equal(report.monthly.cap, 70)
-  assert.equal(report.monthly.percent, (USAGE.totalCredits / 70) * 100)
-  // 相加得到的原值仍然保留，只用于跨周期校验与诊断。
-  assert.ok(Math.abs(report.monthly.computedCap - (USAGE.totalCredits + CREDITS.credits.monthlyCredits)) < 1e-9)
-  assert.ok(Math.abs(report.monthly.computedCap - 70) < 0.05)
+  assert.equal(report.monthly.capSuspect, false)
+
+  // 已用：用「上限 − 剩余」实时算，因此与 weekly 窗口是同一个账本、同一个数——
+  // 这正是之前周/月对不上的病根。
+  assert.ok(Math.abs(report.monthly.used - (70 - CREDITS.credits.monthlyCredits)) < 1e-9)
+  assert.ok(Math.abs(report.monthly.used - report.weekly.used) < 1e-9)
+  // 聚合值仍然保留，且确实落后。
+  assert.equal(report.monthly.usedAggregate, USAGE.totalCredits)
+  assert.ok(report.monthly.used > report.monthly.usedAggregate)
+  assert.equal(report.monthly.percent, (report.monthly.used / 70) * 100)
 
   assert.equal(report.totals.tokensIn, 16705009)
   assert.equal(report.totals.requests, 279)
   assert.equal(report.totals.cost, 0.3664015419)
 })
 
-test('normalizeReport：已用与剩余不属于同一周期时拒绝给月度百分比', () => {
-  // 「剩余」还停在上一周期（$69.9），「已用」已经跨到新周期（$0.37）——
-  // 相加得到 70.27 看着合理，但若两边彻底错位，比例会远超容差。
-  const usage = { ...USAGE, totalCredits: 5 }
-  const credits = { ...CREDITS, credits: { ...CREDITS.credits, monthlyCredits: 90 } }
-  const report = normalizeReport({ whoami: WHOAMI, usage, credits, subscription: SUBSCRIPTION })
-  assert.equal(report.monthly.capSuspect, true)
-  assert.equal(report.monthly.percent, undefined)
-  // 校验不过只影响百分比；上限仍报官方名义值，绝对值照常给出来供显示。
-  assert.equal(report.monthly.cap, 70)
-  assert.equal(report.monthly.used, 5)
-  assert.equal(report.monthly.computedCap, 95)
+test('normalizeReport：官方调高额度时跟着实时值走，不会钉死在档位表', () => {
+  // 档位表里 GOAT 是 70，服务端实际给了 100：剩余 96、已用 4。
+  const usage = { ...USAGE, totalCredits: 4 }
+  const credits = { ...CREDITS, credits: { ...CREDITS.credits, monthlyCredits: 96 } }
+  const report = normalizeReport({ whoami: WHOAMI, usage, credits, subscription: SUBSCRIPTION, now: MID_PERIOD })
+
+  assert.equal(report.monthly.capSource, 'live')
+  assert.ok(Math.abs(report.monthly.cap - 100) < 1e-9)
+  assert.notEqual(report.monthly.cap, 70)
+  // 关键：绝不出现负数。老写法「70 − 剩余」在这里会算出 −26。
+  assert.ok(report.monthly.used >= 0)
+  assert.equal(report.monthly.used, 4)
+  assert.equal(report.monthly.percent, 4)
 })
 
-test('normalizeReport：有加油包时月度上限改用实际总额', () => {
-  // 名义额度不再代表真实上限，这时才用「已用 + 剩余」。
-  const credits = {
-    ...CREDITS,
-    credits: { ...CREDITS.credits, monthlyCredits: 60, purchasedCredits: 20 },
-  }
-  const report = normalizeReport({ whoami: WHOAMI, usage: USAGE, credits, subscription: SUBSCRIPTION })
+test('normalizeReport：官方调低额度时同样跟着实时值走', () => {
+  // 档位表 70，服务端只给 50：剩余 40、已用 10。
+  const usage = { ...USAGE, totalCredits: 10 }
+  const credits = { ...CREDITS, credits: { ...CREDITS.credits, monthlyCredits: 40 } }
+  const report = normalizeReport({ whoami: WHOAMI, usage, credits, subscription: SUBSCRIPTION, now: MID_PERIOD })
+
+  assert.equal(report.monthly.capSource, 'live')
+  assert.ok(Math.abs(report.monthly.cap - 50) < 1e-9)
+  assert.equal(report.monthly.used, 10)
+  assert.equal(report.monthly.percent, 20)
+})
+
+test('normalizeReport：计费周期刚翻转时不切换上限，读数对不上就不给百分比', () => {
+  // 翻转瞬间：剩余已回满额（70），聚合已用还停在上一期的 68 —— 相加会算成 138。
+  const usage = { ...USAGE, totalCredits: 68 }
+  const credits = { ...CREDITS, credits: { ...CREDITS.credits, monthlyCredits: 70 } }
+  const report = normalizeReport({ whoami: WHOAMI, usage, credits, subscription: SUBSCRIPTION, now: JUST_ROLLED })
+
+  assert.equal(report.monthly.cap, 70) // 没被 138 带跑
+  assert.equal(report.monthly.capSource, 'nominal')
+  assert.equal(report.monthly.capSuspect, true)
+  assert.equal(report.monthly.percent, undefined)
+  // 实时推导给出 0，正确地描述了新周期刚开始。
+  assert.equal(report.monthly.used, 0)
+})
+
+test('normalizeReport：有加油包时上限改用实际总额', () => {
+  // 套餐 70 + 加油包 20 = 90；已用 20、剩余 70 —— 自洽的一组读数。
+  const usage = { ...USAGE, totalCredits: 20 }
+  const credits = { ...CREDITS, credits: { ...CREDITS.credits, monthlyCredits: 70, purchasedCredits: 20 } }
+  const report = normalizeReport({ whoami: WHOAMI, usage, credits, subscription: SUBSCRIPTION, now: MID_PERIOD })
+
   assert.equal(report.monthly.purchasedCredits, 20)
-  assert.ok(Math.abs(report.monthly.cap - (USAGE.totalCredits + 60)) < 1e-9)
-  assert.notEqual(report.monthly.cap, 70)
+  assert.equal(report.monthly.capSource, 'live')
+  assert.ok(Math.abs(report.monthly.cap - 90) < 1e-9)
+  assert.equal(report.monthly.capSuspect, false)
+  assert.equal(report.monthly.percent, (20 / 90) * 100)
+})
+
+test('normalizeReport：名义上限小于真实上限时退回聚合值，不出现负数', () => {
+  // 档位表写 70，服务端只给 60：剩余 40 → 「70 − 40」= 30 看着正常，但若偏差更大就会为负。
+  const usage = { ...USAGE, totalCredits: 20 }
+  const credits = { ...CREDITS, credits: { ...CREDITS.credits, monthlyCredits: 45 } }
+  const report = normalizeReport({ whoami: WHOAMI, usage, credits, subscription: SUBSCRIPTION, now: MID_PERIOD })
+  assert.ok(report.monthly.used >= 0)
 })
 
 test('normalizeReport：四个端点全空时不抛错，只给空壳', () => {
