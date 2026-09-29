@@ -295,3 +295,25 @@ test('浏览器半部：按钮样式与 DSH 原生头部图标按钮一致', () 
   // 兜底插槽已经删掉，样式里不该再留悬浮容器。
   assert.doesNotMatch(style, /ccq-float/)
 })
+
+test('浏览器半部：百分比始终一位小数，两位数之后也不取整', () => {
+  const { definition } = captured
+  const exports = definition.factory((id) => {
+    if (id === 'react') return reactShim
+    throw new Error(`意外的 require: ${id}`)
+  })
+
+  const { formatPercent } = exports.__internals
+
+  // 回归点：≥10% 曾走 Math.round(percent)，于是 12.3% 和 12.9% 都显示成 13%。
+  assert.equal(formatPercent(12.34), '12.3%')
+  assert.equal(formatPercent(69.96), '70.0%')
+  assert.equal(formatPercent(100), '100.0%')
+  // < 10% 与进位边界同样是固定一位小数，不存在两套规则。
+  assert.equal(formatPercent(3.7), '3.7%')
+  assert.equal(formatPercent(9.99), '10.0%')
+  assert.equal(formatPercent(0), '0.0%')
+  // 非数字仍走占位符，不抛。
+  assert.equal(formatPercent(undefined), '—')
+  assert.equal(formatPercent(Number.NaN), '—')
+})
